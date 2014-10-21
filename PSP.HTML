@@ -1,0 +1,257 @@
+<html>
+	<head>
+		<title> RuMors!</title>
+
+
+		<!-- Styling for the document  -->
+		<style type="text/css">
+			body {
+				width: 90%;
+				margin: 0 auto;}
+			#content {overflow: auto;}
+			
+			#rumorHouse{
+				width: 45%;
+				float: right;
+				margin: 2%;
+			}
+			#rumorHouse video{
+				width:280px; 
+				height: 160px;
+				float: center;
+			}
+
+			textarea {
+			width: 380px;
+			height: 70px;
+			background-color: #DADFE1;
+			border: none;
+			border-radius: 3px;
+			 
+
+			}
+
+			#poops{
+			width:200px;
+			height:300px;
+			position:absolute;
+			border:1px solid:#000000;
+			}
+
+			#submitButton{
+			background-color: #FF6680;
+			color: white;
+			width: 380px;
+    		height: 30px;
+    		border: none;
+    		 
+
+			-moz-border-radius:5px; /* Firefox */
+    		-webkit-border-radius: 5px; /* Safari, Chrome */
+    		-khtml-border-radius: 5px; /* KHTML */
+    		border-radius: 5px; /* CSS3 */
+
+    		font-family: gotham, Helvetica, Aerial, Verdana, sans-serif;
+    		font-size: 13px;
+			}
+		</style>
+
+		<!-- PeerJS library and socket.io library -->
+		<script src="http://cdn.peerjs.com/0.3/peer.min.js"></script>
+		<script src="/socket.io/socket.io.js"></script>
+		<script type="text/javascript">
+
+		// global variables - these will be used globally in the script
+
+		// this will eventurally hold 'this' computer's video stream from the webcam so that it 
+		// can be passed to other clients or to a server
+ 		var my_stream = null;
+
+		// empty variables for the peer object and the peer identifier string
+		var peer = null;
+		var peer_id = null;
+
+		// empty variable for the socket object
+		var socket = null;
+
+		// empty variables for the video canvas and its context (HTML5 canvas)
+		var videoCanvas = null;
+		var videoContext = null;
+ 
+
+		// 1. This function is initialized with the document completely loads. 
+		// 2. Gets user media (webCam video) and places it into a variable that can be passed around to other clients 
+		//    or servers. After getting user media, init connects to the PeerJS server.
+		// 3. This is also where the video canvas and context are defined as well as drawing methods and event listeners.
+		var init = function(){
+
+			window.URL = window.URL || window.webkitURL || window.mozURL || window.msURL;
+			navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
+
+			if(navigator.getUserMedia){
+				navigator.getUserMedia({video: true, audio: false}, function(stream){
+					my_stream = stream;
+					var videoElement = document.getElementById('myVideo');
+					videoElement.src = window.URL.createObjectURL(stream) || stream;
+					videoElement.play();
+				
+					//connect to peer server
+					peerConnect();
+
+				}, function(err){
+					console.log('Failed to get local stream', err);
+				});
+			}
+
+			videoCanvas = document.getElementById('videoCanvas');
+			//videoContext = videoCanvas.getContext('2d');
+
+			var x;
+			var y;
+			var px = 0;
+			var py = 0;
+			var canvasClick = false;
+
+			videoCanvas.addEventListener('click', function(){
+				canvasClick = !canvasClick;
+			});
+
+		};
+
+		// 1. this function connects us to the PeerJS server using a unique API key
+		// 2. it then grabs a Peer ID from the server that can be used to make and receive calls
+		// 3. after it grabs a Peer ID, it emits that ID to a socket server, so that the ID can be broadcast to others
+		// 4. there is also a peer.on('call'...) event that answers a call with 'this' stream and grabs the outside stream
+		//    and appends it to the HTML document
+		var peerConnect = function(){
+
+			// create a new PeerJS object
+			peer = new Peer({key: 'bw8m5kivpn5klnmi'});
+
+			// Get an ID from the PeerJS server
+			peer.on('open', function(id){
+				console.log('My peer ID is: ' + id);
+				peer_id = id;
+
+				//connect to socket server (see function below)
+				connectSocket();
+			});
+
+			// on receiving a call ... 
+			peer.on('call', function(incoming_call) {
+				console.log("You got a new call");
+
+				// answer the call with an AV stream
+				incoming_call.answer(my_stream);
+
+				// when you receive a stream from an incoming call, place it in a video div
+				incoming_call.on('stream', function(remoteStream){
+					console.log("Incoming stream ...")
+					var ovideoElement = document.createElement('video');
+					ovideoElement.src = window.URL.createObjectURL(remoteStream) || remoteStream;
+					ovideoElement.play();
+					document.getElementById("rumorHouse").appendChild(ovideoElement);					
+				});
+			});
+		};
+
+		// 1. connects to the node server and emits 'this' peer_id
+		// 2. when the server emits the peer_id of another client, 'this' client calls that client and 
+		//    gets its stream
+		// 3. socket events follow, see description above each event
+		var connectSocket = function(){
+
+			socket = io.connect('http://104.131.38.203:8080/');
+
+			// Connection event
+			socket.on('connect', function(){
+				console.log("sending out my peer id");
+				socket.emit("peer_id", peer_id);
+			});
+			//chat 
+			socket.on('chatmessage', function (data) {
+				console.log(data);
+				document.getElementById('messages').innerHTML = "" + data + 
+ + "" + document.getElementById('messages').innerHTML;
+			});
+			
+			var sendmessage = function(message) {
+				console.log("chatmessage: " + message);
+				socket.emit('chatmessage', message);
+			}; //chat
+
+
+	var ppoint = {x: 0, y: 0};	
+			socket.on('drawing', function(point) {
+				context.strokeStyle="#00FF00";
+                        	context.beginPath();
+                        	context.moveTo(ppoint.x, ppoint.y);
+                        	context.lineTo(point.x, point.y);
+                        	context.stroke();				
+				ppoint = point;
+			});
+
+
+			// Receive other peer ids
+			socket.on('peer_id_server', function (data){
+				console.log("Got a new peer from server: " + data);
+
+				// call them with our stream
+				console.log("Calling peer: " + data);
+				var call = peer.call(data, my_stream);
+
+				// when we get a remote stream, append it to our document
+				call.on('stream', function(remoteStream){
+					console.log("Got remote stream!");
+					var ovideoElement = document.createElement('video');
+					ovideoElement.src = window.URL.createObjectURL(remoteStream) || remoteStream;
+					ovideoElement.id = data;
+					ovideoElement.play();
+					document.getElementById("rumorHouse").appendChild(ovideoElement);
+				});
+			});
+		};
+
+		window.addEventListener('load', init);
+
+		</script>
+
+	</head>
+	<body style="background-color:lightgrey">
+
+
+		<div id="header" style= "font-family:verdana; color:grey; text-align:center">
+			<h1> RuMors! Did you hear about...? </h1>
+		</div>
+		<div id="content">
+			<!--<div id="canvasColumn">
+			<canvas id="videoCanvas" style="z-index:1; ;position:absolute; left:10px; top10px;" width="600" height="700"></canvas>
+			</div>-->
+		<div id="messages"style= "font-family:verdana; color:grey; text-align:left">
+ 		No Messages Yet
+		</div>
+		
+
+		<div id="rumorHouse" style= "font-family:verdana; color:grey;">
+			Rumor House
+		<br>
+		<video id="myVideo"></video>
+		</div>
+
+	
+		<div id="inputArea">
+ 		<textarea id="message" name="message"></textarea><br>
+ 		<button id ="submitButton" class="button" onclick="sendmessage(document.getElementById('message').value);">SUBMIT YOUR RUMOR</button></div>
+		</div>
+
+
+		<div id="poops" >
+		<img src="http://wangdanqing.com/live_web_class_3/bb.png" alt="bb icon" width="45" height="39">
+		<img src="http://wangdanqing.com/live_web_class_3/bb.png" alt="bb icon" width="45" height="39">
+		<img src="http://wangdanqing.com/live_web_class_3/bb.png" alt="bb icon" width="45" height="39">
+		<img src="http://wangdanqing.com/live_web_class_3/bb.png" alt="bb icon" width="45" height="39">
+		</div>
+		<!-- blank image file from the server -->
+		<img id="imagefile" style="display:none;">
+	</body>
+</html>
