@@ -118,11 +118,7 @@
 
 		};
 
-		// 1. this function connects us to the PeerJS server using a unique API key
-		// 2. it then grabs a Peer ID from the server that can be used to make and receive calls
-		// 3. after it grabs a Peer ID, it emits that ID to a socket server, so that the ID can be broadcast to others
-		// 4. there is also a peer.on('call'...) event that answers a call with 'this' stream and grabs the outside stream
-		//    and appends it to the HTML document
+		
 		var peerConnect = function(){
 
 			// create a new PeerJS object
